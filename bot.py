@@ -5,16 +5,16 @@ import telebot
 from telebot import types
 
 # توكن البوت الخاص بك
-TELEGRAM_BOT_TOKEN = '8728570816:AAHE4G5D7Nkabn_qpYYSiCCNBGZKsnBlBxc'
+TELEGRAM_BOT_TOKEN = '8728570816:AAEX9tKnfb3qmNsVcyPgUD5c8X40Aa1urHA'
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 # 🔴 معرف الـ Chat ID الخاص بك للإدارة وتلقي الإثباتات
 OWNER_CHAT_ID = 2115819869
 
-# تكلفة إنشاء ترويج جديد
+# تكلفة إنشاء ترويج جديد (مقدار النقاط التي سيتم اقتطاعها)
 PROMOTION_COST = 10.0
 
-# جلب يوزر البوت تلقائياً
+# جلب يوزر البوت تلقائياً ليكون رابط الإحالة فعالاً
 try:
     BOT_USERNAME = bot.get_me().username
 except Exception:
@@ -23,7 +23,6 @@ except Exception:
 active_tasks = []          # قائمة روابط المهام المتاحة للترويج
 user_pending_tasks = {}    # لتتبع الخطوة الحالية للمستخدم
 admin_waiting_rejection = {} # لتتبع المدير عند كتابة سبب الرفض
-user_ad_clicks = {}        # لتسجيل وقت ضغط المستخدم على زر بدء المشاهدة
 
 # إعداد قاعدة البيانات وتحديث الجداول تلقائياً
 def init_db():
@@ -56,7 +55,6 @@ def init_db():
 
 init_db()
 
-# إنشاء أو جلب بيانات المستخدم مع التحقق الحقيقي من الإحالة
 def get_or_create_user(user_id, username, first_name, referrer_id=None):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
@@ -70,7 +68,7 @@ def get_or_create_user(user_id, username, first_name, referrer_id=None):
         ''', (user_id, username, first_name, referrer_id))
         conn.commit()
         
-        # مكافأة الإحالة (5 نقاط) للشخص الداعي عند الاشتراك الجديد الحقيقي
+        # مكافأة الإحالة للشخص الداعي
         if referrer_id and referrer_id != user_id:
             cursor.execute('SELECT balance FROM users WHERE user_id = ?', (referrer_id,))
             ref_user = cursor.fetchone()
@@ -79,13 +77,9 @@ def get_or_create_user(user_id, username, first_name, referrer_id=None):
                 cursor.execute('UPDATE users SET balance = ? WHERE user_id = ?', (new_ref_balance, referrer_id))
                 conn.commit()
                 try:
-                    bot.send_message(
-                        referrer_id, 
-                        f"🎉 **إحالة جديدة ناجحة!**\nقام مستخدم جديد بالاشتراك في البوت عبر رابطك.\nتمت إضافة `5.0 نقاط` إلى رصيدك بنجاح!", 
-                        parse_mode="Markdown"
-                    )
-                except Exception as e:
-                    print(f"Could not notify referrer: {e}")
+                    bot.send_message(referrer_id, "🎁 انضم مستخدم جديد عبر رابط الإحالة الخاص بك! تمت إضافة `5 نقاط` لرصيدك.", parse_mode="Markdown")
+                except:
+                    pass
                     
         balance = 20.0
         last_gift = None
@@ -135,7 +129,7 @@ def extract_shortcode_from_url(url):
         return match.group(1)
     return None
 
-# القائمة الرئيسية
+# لوحة المفاتيح الرئيسية
 def get_main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn1 = types.KeyboardButton("👁️ تنفيذ مهام وكسب نقاط")
@@ -226,100 +220,38 @@ def handle_buttons(message):
     elif "دعوة أصدقاء" in text:
         referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{chat_id}"
         invite_msg = (
-            f"👥 **نظام دعوة الأصدقاء الحقيقي:**\n\n"
-            f"شارك هذا الرابط مع أصدقائك واكسب `5 نقاط` فور انضمامهم واشتراكهم لأول مرة في البوت!\n\n"
+            f"👥 **نظام دعوة الأصدقاء:**\n\n"
+            f"شاركه مع أصدقائك واكسب نقاط إضافية لكل شخص ينضم عبر رابطك!\n\n"
             f"🔗 رابط الإحالة الخاص بك:\n`{referral_link}`"
         )
         bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
 
-# 📺 نظام إرسال الإعلان (رابط نصي آمن + زر بدء الـ 15 ثانية)
+# التعامل مع زر مشاهدة الإعلان بالطريقة البسيطة والسريعة السابقة
 @bot.message_handler(func=lambda message: message.text == "📺 شاهد الإعلان واكسب نقاط")
 def handle_ad_button(message):
     chat_id = message.chat.id
+    user = message.from_user
+    
+    # إضافة نقطة فورية للمشاهدة
+    reward_amount = 1.0
+    update_user_balance(user.id, reward_amount)
+    
+    new_balance, _ = get_or_create_user(user.id, user.username, user.first_name)
     ad_url = "https://uplcm.com/4/11967886"
     
     markup = types.InlineKeyboardMarkup()
-    btn_start = types.InlineKeyboardButton("⏱️ اضغط هنا لبدء مشاهدة الإعلان (15 ثانية)", callback_data="start_ad_timer")
-    markup.add(btn_start)
+    markup.add(types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url))
     
     bot.send_message(
         chat_id,
-        f"📺 **شاهد الإعلان واكسب نقاط:**\n\n"
-        f"1. اضغط على الرابط التالي لمشاهدة الإعلان:\n{ad_url}\n\n"
-        f"2. بعد الضغط على الرابط ومشاهدته، اضغط على زر **'بدء مشاهدة الإعلان'** أدناه لتبدأ الـ 15 ثانية:",
-        reply_markup=markup,
-        parse_mode="Markdown",
-        disable_web_page_preview=True
-    )
-
-# تسجيل وقت بدء العد التنازلي
-@bot.callback_query_handler(func=lambda call: call.data == "start_ad_timer")
-def start_ad_timer_callback(call):
-    chat_id = call.message.chat.id
-    user_ad_clicks[chat_id] = datetime.now()
-    
-    markup = types.InlineKeyboardMarkup()
-    btn_claim = types.InlineKeyboardButton("✅ تحقق واستلام النقطة", callback_data="claim_safe_point")
-    markup.add(btn_claim)
-    
-    bot.answer_callback_query(call.id, "⏱️ بدأ عد الـ 15 ثانية الآن...")
-    bot.send_message(
-        chat_id,
-        "⏳ **جاري حساب وقت المشاهدة...**\n"
-        "انتظر لمدة 15 ثانية ثم اضغط على زر **'تحقق واستلام النقطة'** أدناه:",
+        f"📺 **تمت إضافة (`+{reward_amount} نقطة`) لرصيدك!**\n\n"
+        f"📊 رصيدك الجديد: **{new_balance} نقطة**\n\n"
+        f"اضغط على الزر أدناه لمشاهدة الإعلان الآن:",
         reply_markup=markup,
         parse_mode="Markdown"
     )
 
-# التحقق واستلام النقطة بشكل آمن تماماً
-@bot.callback_query_handler(func=lambda call: call.data == "claim_safe_point")
-def claim_safe_point_callback(call):
-    user_id = call.from_user.id
-    chat_id = call.message.chat.id
-    
-    if chat_id not in user_ad_clicks:
-        bot.answer_callback_query(
-            call.id, 
-            "⚠️ لم تقم ببدء مشاهدة الإعلان من الزر المخصص!", 
-            show_alert=True
-        )
-        return
-        
-    elapsed_time = (datetime.now() - user_ad_clicks[chat_id]).total_seconds()
-    
-    if elapsed_time < 15:
-        remaining = int(15 - elapsed_time)
-        bot.answer_callback_query(
-            call.id, 
-            f"⏳ لم تنتهِ الـ 15 ثانية بعد! متبقي: {remaining} ثانية.", 
-            show_alert=True
-        )
-        return
-
-    # نجاح المشاهدة وإضافة النقطة
-    update_user_balance(user_id, 1.0)
-    del user_ad_clicks[chat_id]
-    
-    new_balance, _ = get_or_create_user(user_id, call.from_user.username, call.from_user.first_name)
-    bot.answer_callback_query(call.id, "🎉 تمت إضافة 1 نقطة لرصيدك بنجاح!", show_alert=True)
-    
-    # إرسال إعلان جديد مباشرة
-    ad_url = "https://uplcm.com/4/11967886"
-    markup = types.InlineKeyboardMarkup()
-    btn_start = types.InlineKeyboardButton("⏱️ اضغط هنا لبدء مشاهدة الإعلان (15 ثانية)", callback_data="start_ad_timer")
-    markup.add(btn_start)
-    
-    bot.send_message(
-        chat_id,
-        f"✅ **تمت إضافة (`+1.0 نقطة`) لرصيدك بنجاح!**\n\n"
-        f"📊 رصيدك الحالي: **{new_balance} نقطة**\n\n"
-        f"📺 **شاهد إعلاناً آخر لكسب المزيد:**\n{ad_url}",
-        reply_markup=markup,
-        parse_mode="Markdown",
-        disable_web_page_preview=True
-    )
-
-# استقبال رابط ترويج الخصم
+# استقبال الرابط واقتطاع النقاط من المستخدم عند إنشاء ترويج
 @bot.message_handler(func=lambda message: message.text and "instagram.com" in message.text)
 def handle_user_instagram_link(message):
     chat_id = message.chat.id
@@ -358,7 +290,7 @@ def handle_user_instagram_link(message):
         reply_markup=get_main_menu()
     )
 
-# اختيار مهمة
+# الخطوة 1: عندما يضغط المستخدم على المهمة
 @bot.callback_query_handler(func=lambda call: call.data.startswith('do_task_'))
 def handle_task_selection(call):
     task_idx = int(call.data.split('_')[2])
@@ -387,7 +319,7 @@ def handle_task_selection(call):
     else:
         bot.answer_callback_query(call.id, "عذراً، هذه المهمة لم تعد متاحة.")
 
-# استقبال يوزر الإنستجرام
+# الخطوة 2: استقبال يوزر إنستجرام من المستخدم
 @bot.message_handler(func=lambda message: message.chat.id in user_pending_tasks and user_pending_tasks[message.chat.id].get('step') == 'waiting_ig_username')
 def handle_user_ig_username(message):
     chat_id = message.chat.id
@@ -403,7 +335,7 @@ def handle_user_ig_username(message):
         parse_mode="Markdown"
     )
 
-# استقبال إثبات الصورة
+# الخطوة 3: استقبال صورة الإثبات وإرسالها للإدارة
 @bot.message_handler(content_types=['photo'])
 def handle_user_proof_photo(message):
     chat_id = message.chat.id
@@ -442,7 +374,7 @@ def handle_user_proof_photo(message):
         
     del user_pending_tasks[chat_id]
 
-# قبول / رفض المدير
+# معالجة تفاعل المدير (القبول أو طلب سبب الرفض)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('accept_') or call.data.startswith('reject_'))
 def handle_admin_decision(call):
     try:
@@ -494,7 +426,7 @@ def handle_admin_decision(call):
         print(f"Error in admin decision: {e}")
         bot.answer_callback_query(call.id, "⚠️ حدث خطأ أثناء معالجة الطلب.", show_alert=True)
 
-# استقبال سبب الرفض
+# استقبال سبب الرفض المكتوب من المدير وإرساله للمستخدم
 @bot.message_handler(func=lambda message: message.chat.id == OWNER_CHAT_ID and message.chat.id in admin_waiting_rejection)
 def handle_admin_rejection_reason(message):
     admin_id = message.chat.id
@@ -506,4 +438,31 @@ def handle_admin_rejection_reason(message):
     caption = data['caption']
     
     try:
-        bot.edit_me
+        bot.edit_message_caption(
+            caption=caption + f"\n\n❌ **الحالة:** تم الرفض.\n💬 **السبب:** {rejection_reason}",
+            chat_id=admin_id,
+            message_id=message_id,
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Error editing admin caption: {e}")
+        
+    try:
+        bot.send_message(
+            target_user_id,
+            f"❌ **عذراً، تم رفض إثبات التفاعل الخاص بك من قبل الإدارة.**\n\n"
+            f"💬 **السبب:** {rejection_reason}\n\n"
+            f"يرجى تصحيح الخطأ وإعادة المحاولة.",
+            parse_mode="Markdown",
+            reply_markup=get_main_menu()
+        )
+        bot.send_message(admin_id, "✅ تم إرسال سبب الرفض للمستخدم بنجاح.")
+    except Exception as e:
+        print(f"Could not notify user: {e}")
+        
+    del admin_waiting_rejection[admin_id]
+
+if __name__ == "__main__":
+    print("Bot is running stably...")
+    bot.infinity_polling()
+    
