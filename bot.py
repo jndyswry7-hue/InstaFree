@@ -198,21 +198,33 @@ def handle_buttons(message):
         can_take_gift = True
         
         if last_gift:
-            last_gift_time = datetime.strptime(last_gift, '%Y-%m-%d %H:%M:%S')
-            time_diff = now - last_gift_time
-            if time_diff < timedelta(hours=24):
-                can_take_gift = False
-                remaining_time = timedelta(hours=24) - time_diff
-                hours, remainder = divmod(int(remaining_time.total_seconds()), 3600)
-                minutes, _ = divmod(remainder, 60)
-                bot.send_message(chat_id, f"⏳ لقد استلمت هديتك اليومية مسبقاً!\nيمكنك استلامها بعد: **{hours} ساعة و {minutes} دقيقة**.", parse_mode="Markdown")
+            try:
+                last_gift_time = datetime.strptime(last_gift, '%Y-%m-%d %H:%M:%S')
+                time_diff = now - last_gift_time
+                if time_diff < timedelta(hours=24):
+                    can_take_gift = False
+                    remaining_time = timedelta(hours=24) - time_diff
+                    hours, remainder = divmod(int(remaining_time.total_seconds()), 3600)
+                    minutes, _ = divmod(remainder, 60)
+                    bot.send_message(
+                        chat_id, 
+                        f"⏳ **لقد استلمت هديتك اليومية مسبقاً!**\n\nيمكنك استلام الهدية القادمة بعد:\n⏱️ **{hours} ساعة و {minutes} دقيقة**.", 
+                        parse_mode="Markdown"
+                    )
+            except Exception:
+                can_take_gift = True
                 
         if can_take_gift:
             gift_amount = 5.0
             update_user_balance(user.id, gift_amount)
             update_last_gift_time(user.id)
             new_balance, _ = get_or_create_user(user.id, user.username, user.first_name)
-            bot.send_message(chat_id, f"🎁 مبروك! حصلت على الهدية اليومية (`+{gift_amount} نقطة`).\n📊 رصيدك الجديد: **{new_balance} نقطة**", parse_mode="Markdown", reply_markup=get_main_menu())
+            bot.send_message(
+                chat_id, 
+                f"🎁 **مبروك! حصلت على الهدية اليومية (`+{gift_amount} نقطة`)!**\n\n📊 رصيدك الجديد: **{new_balance} نقطة**", 
+                parse_mode="Markdown", 
+                reply_markup=get_main_menu()
+            )
             
     elif "رصيدي الحالي" in text:
         current_balance, _ = get_or_create_user(user.id, user.username, user.first_name)
@@ -494,15 +506,4 @@ def handle_admin_rejection_reason(message):
             f"💬 **السبب:** {rejection_reason}\n\n"
             f"يرجى تصحيح الخطأ وإعادة المحاولة.",
             parse_mode="Markdown",
-            reply_markup=get_main_menu()
-        )
-        bot.send_message(admin_id, "✅ تم إرسال سبب الرفض للمستخدم بنجاح.")
-    except Exception as e:
-        print(f"Could not notify user: {e}")
-        
-    del admin_waiting_rejection[admin_id]
-    
-if __name__ == "__main__":
-    print("Bot is running...")
-    bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeout=60)
-    
+            reply_markup=g
