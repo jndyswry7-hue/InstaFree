@@ -5,7 +5,7 @@ import telebot
 from telebot import types
 
 # توكن البوت الخاص بك
-TELEGRAM_BOT_TOKEN = '8728570816:AAHE4G5D7Nkabn_qpYYSiCCNBGZKsnBlBxc'
+TELEGRAM_BOT_TOKEN = '8728570816:AAEX9tKnfb3qmNsVcyPgUD5c8X40Aa1urHA'
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 # 🔴 معرف الـ Chat ID الخاص بك للإدارة وتلقي الإثباتات
@@ -242,7 +242,7 @@ def handle_buttons(message):
 # دالة إرسال الإعلان
 def send_ad_prompt(chat_id):
     ad_url = "https://uplcm.com/4/11967886"
-    user_ad_clicks[chat_id] = datetime.now() # بدء حساب وقت المشاهدة
+    user_ad_clicks[chat_id] = datetime.now()
     
     markup = types.InlineKeyboardMarkup()
     btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url)
@@ -277,9 +277,8 @@ def confirm_ad_watch_callback(call):
         
     elapsed_time = (datetime.now() - user_ad_clicks[chat_id]).total_seconds()
     
-    # ❌ لم يكمل 15 ثانية -> إظهار النص المطلوب فقط ورست العداد
     if elapsed_time < 15:
-        user_ad_clicks[chat_id] = datetime.now() # إعادة بدء الـ 15 ثانية من اللحظة
+        user_ad_clicks[chat_id] = datetime.now() # إعادة بدء العد 15 ثانية
         bot.answer_callback_query(
             call.id, 
             "عذراً، يجب مشاهدة الإعلان لمدة 15 ثانية كاملة! ⏱️", 
@@ -287,7 +286,6 @@ def confirm_ad_watch_callback(call):
         )
         return
 
-    # ✅ اكتملت الـ 15 ثانية -> إضافة النقطة بنجاح
     update_user_balance(user_id, 1.0)
     del user_ad_clicks[chat_id]
     
@@ -426,7 +424,7 @@ def handle_user_proof_photo(message):
         
     del user_pending_tasks[chat_id]
 
-# معالجة تفاعل المدير (القبول أو طلب سبب الرفض)
+# معالجة تفاعل المدير
 @bot.callback_query_handler(func=lambda call: call.data.startswith('accept_') or call.data.startswith('reject_'))
 def handle_admin_decision(call):
     try:
@@ -478,7 +476,7 @@ def handle_admin_decision(call):
         print(f"Error in admin decision: {e}")
         bot.answer_callback_query(call.id, "⚠️ حدث خطأ أثناء معالجة الطلب.", show_alert=True)
 
-# استقبال سبب الرفض المكتوب من المدير وإرساله للمستخدم
+# استقبال سبب الرفض
 @bot.message_handler(func=lambda message: message.chat.id == OWNER_CHAT_ID and message.chat.id in admin_waiting_rejection)
 def handle_admin_rejection_reason(message):
     admin_id = message.chat.id
@@ -506,4 +504,10 @@ def handle_admin_rejection_reason(message):
             f"💬 **السبب:** {rejection_reason}\n\n"
             f"يرجى تصحيح الخطأ وإعادة المحاولة.",
             parse_mode="Markdown",
-            reply_markup=g
+            reply_markup=get_main_menu()
+        )
+        bot.send_message(admin_id, "✅ تم إرسال سبب الرفض للمستخدم بنجاح.")
+    except Exception as e:
+        print(f"Could not notify user: {e}")
+        
+    del admin_waiting_reje
