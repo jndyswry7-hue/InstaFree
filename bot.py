@@ -501,7 +501,8 @@ def handle_admin_rejection_reason(message):
         print(f"Could not notify user: {e}")
         
     del admin_waiting_rejection[admin_id]
-
+    
 if __name__ == "__main__":
-    print("Bot is running smoothly on Railway...")
-    bot.infinity_pol
+    print("Bot is running...")
+    bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeout=60)
+    
