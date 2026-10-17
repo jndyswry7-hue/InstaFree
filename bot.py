@@ -1,6 +1,5 @@
 import re
 import sqlite3
-import time
 import threading
 from datetime import datetime, timedelta
 import telebot
@@ -247,17 +246,14 @@ def send_ad_message(chat_id):
         parse_mode="Markdown"
     )
 
-# دالة معالجة مؤقت الإعلان في خلفية البوت (Thread)
-def process_ad_timer(chat_id, user):
-    time.sleep(15)  # الانتظار 15 ثانية بعد فتح رابط الإعلان
-    
+# دالة التحقق المؤجل (تعمل عبر Threading Timer لضمان عدم انهيار البوت)
+def check_ad_reward(chat_id, user):
     if chat_id in user_clicked_ad:
         user_clicked_ad.remove(chat_id)
         reward_amount = 1.0
         update_user_balance(user.id, reward_amount)
         new_balance, _ = get_or_create_user(user.id, user.username, user.first_name)
         
-        # إشعار بإضافة النقطة وتوجيهه لإعلان جديد
         bot.send_message(
             chat_id,
             f"🎉 **تمت إضافة (`+1.0 نقطة`) لرصيدك بنجاح!**\n\n"
@@ -269,7 +265,7 @@ def process_ad_timer(chat_id, user):
     else:
         bot.send_message(
             chat_id,
-            "⚠️ **لم قم بفتح الإعلان ومشاهدته!**\n"
+            "⚠️ **لم تقم بفتح الإعلان ومشاهدته!**\n"
             "يرجى الضغط على الزر أدناه ومشاهدة الإعلان لتكسب النقاط.",
             parse_mode="Markdown"
         )
@@ -283,7 +279,7 @@ def handle_ad_button(message):
         user_clicked_ad.remove(chat_id)
     send_ad_message(chat_id)
 
-# تسجيل الضغط على زر رابط الإعلان وبدء مؤقت الـ 15 ثانية
+# تسجيل الضغط على زر رابط الإعلان وبدء مؤقت الـ 15 ثانية الآمن
 @bot.callback_query_handler(func=lambda call: call.data == "ad_clicked_track")
 def track_ad_click(call):
     chat_id = call.message.chat.id
@@ -291,10 +287,11 @@ def track_ad_click(call):
     
     if chat_id not in user_clicked_ad:
         user_clicked_ad.add(chat_id)
-        bot.answer_callback_query(call.id, "⏱️ جارٍ معالجة المشاهدة، سيتم تحويل النقاط بعد 15 ثانية...")
+        bot.answer_callback_query(call.id, "⏱️ جارٍ التحقق من المشاهدة، سيتم إضافة النقاط بعد 15 ثانية...")
         
-        # تشغيل المؤقت في خيط منفصل كي لا يتوقف البوت عن العمل
-        threading.Thread(target=process_ad_timer, args=(chat_id, user)).start()
+        # استخدام threading.Timer الآمن تماماً لبيئة الاستضافة السحابية
+        timer = threading.Timer(15.0, check_ad_reward, args=(chat_id, user))
+        timer.start()
     else:
         bot.answer_callback_query(call.id, "⏳ جاري التحقق من مشاهدتك الحالية بالفعل...")
 
@@ -501,4 +498,6 @@ def handle_admin_rejection_reason(message):
             f"💬 **السبب:** {rejection_reason}\n\n"
             f"يرجى تصحيح الخطأ وإعادة المحاولة.",
             parse_mode="Markdown",
-            reply_m
+            reply_markup=get_main_menu()
+        )
+        bot.send_message(admin_id, "✅ ت
