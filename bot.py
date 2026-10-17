@@ -5,7 +5,7 @@ import telebot
 from telebot import types
 
 # توكن البوت الخاص بك
-TELEGRAM_BOT_TOKEN = '8728570816:AAHE4G5D7Nkabn_qpYYSiCCNBGZKsnBlBxc'
+TELEGRAM_BOT_TOKEN = '8728570816:AAEX9tKnfb3qmNsVcyPgUD5c8X40Aa1urHA'
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 # 🔴 معرف الـ Chat ID الخاص بك للإدارة وتلقي الإثباتات
@@ -23,6 +23,7 @@ except Exception:
 active_tasks = []          # قائمة روابط المهام المتاحة للترويج
 user_pending_tasks = {}    # لتتبع الخطوة الحالية للمستخدم
 admin_waiting_rejection = {} # لتتبع المدير عند كتابة سبب الرفض
+user_opened_ads = set()    # لتتبع المستخدمين الذين فتحوا رابط الإعلان فعلياً
 
 # إعداد قاعدة البيانات وتحديث الجداول تلقائياً
 def init_db():
@@ -230,11 +231,14 @@ def handle_buttons(message):
         )
         bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
 
-# 📺 زر مشاهدة الإعلان مع زر تأكيد الحصول على النقطة
+# 📺 زر مشاهدة الإعلان
 @bot.message_handler(func=lambda message: message.text == "📺 شاهد الإعلان واكسب نقاط")
 def handle_ad_button(message):
     chat_id = message.chat.id
     ad_url = "https://uplcm.com/4/11967886"
+    
+    # تسجيل أن المستخدم يمر بمرحلة مشاهدة الإعلان
+    user_opened_ads.add(chat_id)
     
     markup = types.InlineKeyboardMarkup()
     btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url)
@@ -244,29 +248,34 @@ def handle_ad_button(message):
     
     bot.send_message(
         chat_id,
-        "📺 **مشاهدة الإعلانات:**\n\n"
-        "1. اضغط على الزر أدناه لمشاهدة الإعلان.\n"
-        "2. بعد الانتهاء من المشاهدة، اضغط على زر **'تم المشاهدة'** لإضافة **1 نقطة** لرصيدك مباشرة!",
+        "📺 **خطوات كسب النقاط من الإعلان:**\n\n"
+        "1. اضغط على الزر الأعلى لفتح رابط الإعلان والمشاهدة.\n"
+        "2. بعد الانتهاء، اضغط على زر **'تم المشاهدة'** لإضافة **1 نقطة** لرصيدك مباشرة!",
         reply_markup=markup,
         parse_mode="Markdown"
     )
 
-# معالجة ضغط زر تأكيد المشاهدة وإرسال التنبيه
+# معالجة ضغط زر تأكيد المشاهدة والتحقق من فتح الإعلان أولاً
 @bot.callback_query_handler(func=lambda call: call.data == "claim_ad_reward")
 def claim_ad_reward_callback(call):
     user_id = call.from_user.id
     chat_id = call.message.chat.id
     
+    # التحقق مما إذا كان المستخدم قد اضطلع على الإعلان المجهز
+    if chat_id not in user_opened_ads:
+        bot.answer_callback_query(call.id, "⚠️ يرجى الضغط على رابط الإعلان ومشاهدته أولاً قبل التحقق!", show_alert=True)
+        return
+        
     # إضافة 1 نقطة لرصيد المستخدم
     reward_amount = 1.0
     update_user_balance(user_id, reward_amount)
+    user_opened_ads.remove(chat_id)
     
     # جلب الرصيد الجديد
     new_balance, _ = get_or_create_user(user_id, call.from_user.username, call.from_user.first_name)
     
     bot.answer_callback_query(call.id, "🎉 تمت إضافة 1 نقطة لرصيدك بنجاح!", show_alert=True)
     
-    # إرسال رسالة تشجيعية لمشاهدة إعلان آخر
     bot.send_message(
         chat_id,
         f"✅ **تمت إضافة (`+1.0 نقطة`) لرصيدك بنجاح!** 🎉\n\n"
@@ -488,6 +497,6 @@ def handle_admin_rejection_reason(message):
     del admin_waiting_rejection[admin_id]
 
 if __name__ == "__main__":
-    print("Bot is running...")
+    print("Bot is running with strictly enforced Ad Viewing before Point Claiming...")
     bot.infinity_polling()
-                            
+    
