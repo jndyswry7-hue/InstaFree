@@ -23,6 +23,7 @@ except Exception:
 active_tasks = []          # قائمة روابط المهام المتاحة للترويج
 user_pending_tasks = {}    # لتتبع الخطوة الحالية للمستخدم
 admin_waiting_rejection = {} # لتتبع المدير عند كتابة سبب الرفض
+user_ad_clicks = {}        # لتسجيل وقت بداية فتح الإعلان لكل مستخدم
 
 # إعداد قاعدة البيانات وتحديث الجداول تلقائياً
 def init_db():
@@ -226,30 +227,69 @@ def handle_buttons(message):
         )
         bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
 
-# التعامل مع زر مشاهدة الإعلان بالطريقة البسيطة والسريعة السابقة
-@bot.message_handler(func=lambda message: message.text == "📺 شاهد الإعلان واكسب نقاط")
-def handle_ad_button(message):
-    chat_id = message.chat.id
-    user = message.from_user
-    
-    # إضافة نقطة فورية للمشاهدة
-    reward_amount = 1.0
-    update_user_balance(user.id, reward_amount)
-    
-    new_balance, _ = get_or_create_user(user.id, user.username, user.first_name)
+# دالة إرسال الإعلان
+def send_ad_prompt(chat_id):
     ad_url = "https://uplcm.com/4/11967886"
+    user_ad_clicks[chat_id] = datetime.now() # بدء حساب وقت المشاهدة
     
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url))
+    btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url)
+    btn_confirm = types.InlineKeyboardButton("✅ تأكيد المشاهدة واستلام (1 نقطة)", callback_data="confirm_ad_watch")
+    markup.add(btn_link)
+    markup.add(btn_confirm)
     
     bot.send_message(
         chat_id,
-        f"📺 **تمت إضافة (`+{reward_amount} نقطة`) لرصيدك!**\n\n"
-        f"📊 رصيدك الجديد: **{new_balance} نقطة**\n\n"
-        f"اضغط على الزر أدناه لمشاهدة الإعلان الآن:",
+        "📺 **شاهد الإعلان واكسب نقطة:**\n\n"
+        "1. اضغط على الزر الأعلى لمشاهدة الإعلان.\n"
+        "2. يجب الانتظار في الإعلان لمدة **15 ثانية** على الأقل.\n"
+        "3. اضغط على زر **'تأكيد المشاهدة'** أدناه لاستلام النقطة.",
         reply_markup=markup,
         parse_mode="Markdown"
     )
+
+# 📺 زر مشاهدة الإعلان
+@bot.message_handler(func=lambda message: message.text == "📺 شاهد الإعلان واكسب نقاط")
+def handle_ad_button(message):
+    send_ad_prompt(message.chat.id)
+
+# معالجة زر التأكيد والتحقق من 15 ثانية
+@bot.callback_query_handler(func=lambda call: call.data == "confirm_ad_watch")
+def confirm_ad_watch_callback(call):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+    
+    if chat_id not in user_ad_clicks:
+        send_ad_prompt(chat_id)
+        return
+        
+    elapsed_time = (datetime.now() - user_ad_clicks[chat_id]).total_seconds()
+    
+    # ❌ لم يكمل 15 ثانية -> إظهار النص المطلوب فقط ورست العداد
+    if elapsed_time < 15:
+        user_ad_clicks[chat_id] = datetime.now() # إعادة بدء الـ 15 ثانية من اللحظة
+        bot.answer_callback_query(
+            call.id, 
+            "عذراً، يجب مشاهدة الإعلان لمدة 15 ثانية كاملة! ⏱️", 
+            show_alert=True
+        )
+        return
+
+    # ✅ اكتملت الـ 15 ثانية -> إضافة النقطة بنجاح
+    update_user_balance(user_id, 1.0)
+    del user_ad_clicks[chat_id]
+    
+    new_balance, _ = get_or_create_user(user_id, call.from_user.username, call.from_user.first_name)
+    bot.answer_callback_query(call.id, "🎉 تمت إضافة 1 نقطة لرصيدك بنجاح!", show_alert=True)
+    
+    bot.send_message(
+        chat_id,
+        f"✅ **تمت إضافة (`+1.0 نقطة`) لرصيدك بنجاح!** 🎉\n\n"
+        f"📊 رصيدك الحالي: **{new_balance} نقطة**\n\n"
+        f"📺 **شاهد إعلاناً آخر لكسب المزيد من النقاط:**",
+        parse_mode="Markdown"
+    )
+    send_ad_prompt(chat_id)
 
 # استقبال الرابط واقتطاع النقاط من المستخدم عند إنشاء ترويج
 @bot.message_handler(func=lambda message: message.text and "instagram.com" in message.text)
@@ -463,6 +503,5 @@ def handle_admin_rejection_reason(message):
     del admin_waiting_rejection[admin_id]
 
 if __name__ == "__main__":
-    print("Bot is running stably...")
-    bot.infinity_polling()
-    
+    print("Bot is running smoothly on Railway...")
+    bot.infinity_pol
