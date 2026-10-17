@@ -1,6 +1,5 @@
 import re
 import sqlite3
-import threading
 from datetime import datetime, timedelta
 import telebot
 from telebot import types
@@ -24,7 +23,6 @@ except Exception:
 active_tasks = []          # قائمة روابط المهام المتاحة للترويج
 user_pending_tasks = {}    # لتتبع الخطوة الحالية للمستخدم
 admin_waiting_rejection = {} # لتتبع المدير عند كتابة سبب الرفض
-user_clicked_ad = set()    # لتتبع المستخدمين الذين ضغطوا على زر رابط الإعلان
 
 # إعداد قاعدة البيانات وتحديث الجداول تلقائياً
 def init_db():
@@ -232,68 +230,56 @@ def handle_buttons(message):
         )
         bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
 
-# إرسال رسالة الإعلان للمستخدم
-def send_ad_message(chat_id):
+# دالة إرسال الإعلان مع زر التأكد (آمنة تماماً وخالية من أي انهيارات)
+@bot.message_handler(func=lambda message: message.text == "📺 شاهد الإعلان واكسب نقاط")
+def handle_ad_button(message):
+    chat_id = message.chat.id
     ad_url = "https://uplcm.com/4/11967886"
+    
     markup = types.InlineKeyboardMarkup()
-    btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url, callback_data="ad_clicked_track")
+    btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url)
+    btn_claim = types.InlineKeyboardButton("✅ تم المشاهدة (استلام النقطة)", callback_data="claim_ad_point")
     markup.add(btn_link)
+    markup.add(btn_claim)
     
     bot.send_message(
         chat_id,
-        "📺 **اضغط على الزر أدناه وقم بفتح الإعلان فوراً:**",
+        "📺 **اضغط على الزر أدناه لمشاهدة الإعلان:**\n"
+        "بعد الانتهاء، اضغط على زر **'تم المشاهدة'** لإضافة النقطة لرصيدك فوراً!",
         reply_markup=markup,
         parse_mode="Markdown"
     )
 
-# دالة التحقق المؤجل (تعمل عبر Threading Timer لضمان عدم انهيار البوت)
-def check_ad_reward(chat_id, user):
-    if chat_id in user_clicked_ad:
-        user_clicked_ad.remove(chat_id)
-        reward_amount = 1.0
-        update_user_balance(user.id, reward_amount)
-        new_balance, _ = get_or_create_user(user.id, user.username, user.first_name)
-        
-        bot.send_message(
-            chat_id,
-            f"🎉 **تمت إضافة (`+1.0 نقطة`) لرصيدك بنجاح!**\n\n"
-            f"📊 رصيدك الحالي: **{new_balance} نقطة**\n\n"
-            f"📺 **شاهد إعلاناً آخر لكسب المزيد من النقاط:**",
-            parse_mode="Markdown"
-        )
-        send_ad_message(chat_id)
-    else:
-        bot.send_message(
-            chat_id,
-            "⚠️ **لم تقم بفتح الإعلان ومشاهدته!**\n"
-            "يرجى الضغط على الزر أدناه ومشاهدة الإعلان لتكسب النقاط.",
-            parse_mode="Markdown"
-        )
-        send_ad_message(chat_id)
-
-# عند النقر على زر "📺 شاهد الإعلان واكسب نقاط"
-@bot.message_handler(func=lambda message: message.text == "📺 شاهد الإعلان واكسب نقاط")
-def handle_ad_button(message):
-    chat_id = message.chat.id
-    if chat_id in user_clicked_ad:
-        user_clicked_ad.remove(chat_id)
-    send_ad_message(chat_id)
-
-# تسجيل الضغط على زر رابط الإعلان وبدء مؤقت الـ 15 ثانية الآمن
-@bot.callback_query_handler(func=lambda call: call.data == "ad_clicked_track")
-def track_ad_click(call):
+# معالجة استلام النقطة بعد مشاهدة الإعلان
+@bot.callback_query_handler(func=lambda call: call.data == "claim_ad_point")
+def claim_ad_point_callback(call):
+    user_id = call.from_user.id
     chat_id = call.message.chat.id
-    user = call.from_user
     
-    if chat_id not in user_clicked_ad:
-        user_clicked_ad.add(chat_id)
-        bot.answer_callback_query(call.id, "⏱️ جارٍ التحقق من المشاهدة، سيتم إضافة النقاط بعد 15 ثانية...")
-        
-        # استخدام threading.Timer الآمن تماماً لبيئة الاستضافة السحابية
-        timer = threading.Timer(15.0, check_ad_reward, args=(chat_id, user))
-        timer.start()
-    else:
-        bot.answer_callback_query(call.id, "⏳ جاري التحقق من مشاهدتك الحالية بالفعل...")
+    # إضافة نقطة واحدة لرصيد المستخدم
+    reward_amount = 1.0
+    update_user_balance(user_id, reward_amount)
+    new_balance, _ = get_or_create_user(user_id, call.from_user.username, call.from_user.first_name)
+    
+    bot.answer_callback_query(call.id, "🎉 تمت إضافة 1 نقطة لرصيدك بنجاح!", show_alert=True)
+    
+    # رسالة النجاح وإرسال إعلان جديد مباشرة
+    bot.send_message(
+        chat_id,
+        f"✅ **تمت إضافة (`+1.0 نقطة`) لرصيدك بنجاح!**\n\n"
+        f"📊 رصيدك الحالي: **{new_balance} نقطة**\n\n"
+        f"📺 **شاهد إعلاناً آخر لكسب المزيد:**",
+        parse_mode="Markdown"
+    )
+    
+    # إرسال إعلان جديد مباشرة
+    ad_url = "https://uplcm.com/4/11967886"
+    markup = types.InlineKeyboardMarkup()
+    btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url)
+    btn_claim = types.InlineKeyboardButton("✅ تم المشاهدة (استلام النقطة)", callback_data="claim_ad_point")
+    markup.add(btn_link)
+    markup.add(btn_claim)
+    bot.send_message(chat_id, "📺 **اضغط على الرابط للمتابعة:**", reply_markup=markup, parse_mode="Markdown")
 
 # استقبال الرابط واقتطاع النقاط من المستخدم عند إنشاء ترويج
 @bot.message_handler(func=lambda message: message.text and "instagram.com" in message.text)
@@ -500,4 +486,13 @@ def handle_admin_rejection_reason(message):
             parse_mode="Markdown",
             reply_markup=get_main_menu()
         )
-        bot.send_message(admin_id, "✅ ت
+        bot.send_message(admin_id, "✅ تم إرسال سبب الرفض للمستخدم بنجاح.")
+    except Exception as e:
+        print(f"Could not notify user: {e}")
+        
+    del admin_waiting_rejection[admin_id]
+
+if __name__ == "__main__":
+    print("Bot is running stably on Railway...")
+    bot.infinity_polling()
+                
