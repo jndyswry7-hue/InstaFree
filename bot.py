@@ -230,30 +230,27 @@ def handle_buttons(message):
         )
         bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
 
-# التعامل مع زر مشاهدة الإعلان واقتطاع/إضافة النقطة
+# زر مشاهدة الإعلان (تنسيق مشاهدة حقيقية - 1 نقطة لكل مشاهدة)
 @bot.message_handler(func=lambda message: message.text == "📺 شاهد الإعلان واكسب نقاط")
 def handle_ad_button(message):
     chat_id = message.chat.id
     user = message.from_user
     
-    # 1. إضافة 1 نقطة لرصيد المستخدم عند النقر
+    # إضافة 1 نقطة للمستخدم مقابل المشاهدة الحقيقية
     reward_amount = 1.0
     update_user_balance(user.id, reward_amount)
     
-    # جلب الرصيد الجديد بعد الزيادة
     new_balance, _ = get_or_create_user(user.id, user.username, user.first_name)
-    
-    # 2. إنشاء زر رابط الإعلان
     ad_url = "https://uplcm.com/4/11967886"
     
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url))
+    markup.add(types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان (1 نقطة)", url=ad_url))
     
     bot.send_message(
         chat_id,
-        f"📺 **تمت إضافة (`+{reward_amount} نقطة`) لرصيدك بمجرد فتح الإعلان!**\n\n"
+        f"📺 **تمت إضافة (`+1.0 نقطة`) لحسابك مقابل المشاهدة!**\n\n"
         f"📊 رصيدك الجديد: **{new_balance} نقطة**\n\n"
-        f"اضغط على الزر أدناه لمشاهدة الإعلان الآن:",
+        f"اضغط على الزر أدناه لإتمام المشاهدة:",
         reply_markup=markup,
         parse_mode="Markdown"
     )
@@ -470,6 +467,5 @@ def handle_admin_rejection_reason(message):
     del admin_waiting_rejection[admin_id]
 
 if __name__ == "__main__":
-    print("Bot is running with full features...")
+    print("Bot is running...")
     bot.infinity_polling()
-        
