@@ -11,14 +11,8 @@ bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 # 🔴 معرف الـ Chat ID الخاص بك للإدارة وتلقي الإثباتات
 OWNER_CHAT_ID = 2115819869
 
-# تكلفة إنشاء ترويج جديد (مقدار النقاط التي سيتم اقتطاعها)
+# تكلفة إنشاء ترويج جديد
 PROMOTION_COST = 10.0
-
-# جلب يوزر البوت تلقائياً ليكون رابط الإحالة فعالاً
-try:
-    BOT_USERNAME = bot.get_me().username
-except Exception:
-    BOT_USERNAME = "YourBot"
 
 active_tasks = []          # قائمة روابط المهام المتاحة للترويج
 user_pending_tasks = {}    # لتتبع الخطوة الحالية للمستخدم
@@ -30,7 +24,6 @@ def init_db():
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
     
-    # جدول المستخدمين
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -42,7 +35,6 @@ def init_db():
         )
     ''')
     
-    # جدول المهام المكتملة لمنع تكرارها
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS completed_tasks (
             user_id INTEGER,
@@ -69,7 +61,6 @@ def get_or_create_user(user_id, username, first_name, referrer_id=None):
         ''', (user_id, username, first_name, referrer_id))
         conn.commit()
         
-        # مكافأة الإحالة للشخص الداعي
         if referrer_id and referrer_id != user_id:
             cursor.execute('SELECT balance FROM users WHERE user_id = ?', (referrer_id,))
             ref_user = cursor.fetchone()
@@ -155,6 +146,7 @@ def send_welcome(message):
             pass
             
     balance, _ = get_or_create_user(user.id, user.username, user.first_name, referrer_id)
+    bot_username = bot.get_me().username
     
     welcome_text = (
         f"أهلاً بك يا *{user.first_name}* في منصة الترويج لإنستجرام! 🌟🔥\n\n"
@@ -231,7 +223,12 @@ def handle_buttons(message):
         bot.send_message(chat_id, f"📊 رصيدك الحالي هو: **{current_balance} نقطة**", parse_mode="Markdown")
         
     elif "دعوة أصدقاء" in text:
-        referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{chat_id}"
+        try:
+            bot_username = bot.get_me().username
+        except Exception:
+            bot_username = "Bot"
+            
+        referral_link = f"https://t.me/{bot_username}?start=ref_{chat_id}"
         invite_msg = (
             f"👥 **نظام دعوة الأصدقاء:**\n\n"
             f"شاركه مع أصدقائك واكسب نقاط إضافية لكل شخص ينضم عبر رابطك!\n\n"
@@ -239,7 +236,6 @@ def handle_buttons(message):
         )
         bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
 
-# دالة إرسال الإعلان
 def send_ad_prompt(chat_id):
     ad_url = "https://uplcm.com/4/11967886"
     user_ad_clicks[chat_id] = datetime.now()
@@ -260,12 +256,10 @@ def send_ad_prompt(chat_id):
         parse_mode="Markdown"
     )
 
-# 📺 زر مشاهدة الإعلان
 @bot.message_handler(func=lambda message: message.text == "📺 شاهد الإعلان واكسب نقاط")
 def handle_ad_button(message):
     send_ad_prompt(message.chat.id)
 
-# معالجة زر التأكيد والتحقق من 15 ثانية
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_ad_watch")
 def confirm_ad_watch_callback(call):
     user_id = call.from_user.id
@@ -278,7 +272,7 @@ def confirm_ad_watch_callback(call):
     elapsed_time = (datetime.now() - user_ad_clicks[chat_id]).total_seconds()
     
     if elapsed_time < 15:
-        user_ad_clicks[chat_id] = datetime.now() # إعادة بدء العد 15 ثانية
+        user_ad_clicks[chat_id] = datetime.now()
         bot.answer_callback_query(
             call.id, 
             "عذراً، يجب مشاهدة الإعلان لمدة 15 ثانية كاملة! ⏱️", 
@@ -301,7 +295,6 @@ def confirm_ad_watch_callback(call):
     )
     send_ad_prompt(chat_id)
 
-# استقبال الرابط واقتطاع النقاط من المستخدم عند إنشاء ترويج
 @bot.message_handler(func=lambda message: message.text and "instagram.com" in message.text)
 def handle_user_instagram_link(message):
     chat_id = message.chat.id
@@ -340,7 +333,6 @@ def handle_user_instagram_link(message):
         reply_markup=get_main_menu()
     )
 
-# الخطوة 1: عندما يضغط المستخدم على المهمة
 @bot.callback_query_handler(func=lambda call: call.data.startswith('do_task_'))
 def handle_task_selection(call):
     task_idx = int(call.data.split('_')[2])
@@ -369,7 +361,6 @@ def handle_task_selection(call):
     else:
         bot.answer_callback_query(call.id, "عذراً، هذه المهمة لم تعد متاحة.")
 
-# الخطوة 2: استقبال يوزر إنستجرام من المستخدم
 @bot.message_handler(func=lambda message: message.chat.id in user_pending_tasks and user_pending_tasks[message.chat.id].get('step') == 'waiting_ig_username')
 def handle_user_ig_username(message):
     chat_id = message.chat.id
@@ -385,7 +376,6 @@ def handle_user_ig_username(message):
         parse_mode="Markdown"
     )
 
-# الخطوة 3: استقبال صورة الإثبات وإرسالها للإدارة
 @bot.message_handler(content_types=['photo'])
 def handle_user_proof_photo(message):
     chat_id = message.chat.id
@@ -424,7 +414,6 @@ def handle_user_proof_photo(message):
         
     del user_pending_tasks[chat_id]
 
-# معالجة تفاعل المدير
 @bot.callback_query_handler(func=lambda call: call.data.startswith('accept_') or call.data.startswith('reject_'))
 def handle_admin_decision(call):
     try:
@@ -476,7 +465,6 @@ def handle_admin_decision(call):
         print(f"Error in admin decision: {e}")
         bot.answer_callback_query(call.id, "⚠️ حدث خطأ أثناء معالجة الطلب.", show_alert=True)
 
-# استقبال سبب الرفض
 @bot.message_handler(func=lambda message: message.chat.id == OWNER_CHAT_ID and message.chat.id in admin_waiting_rejection)
 def handle_admin_rejection_reason(message):
     admin_id = message.chat.id
@@ -510,4 +498,9 @@ def handle_admin_rejection_reason(message):
     except Exception as e:
         print(f"Could not notify user: {e}")
         
-    del admin_waiting_reje
+    del admin_waiting_rejection[admin_id]
+
+if __name__ == "__main__":
+    print("Bot is running safely on Railway...")
+    bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeout=60)
+            
