@@ -23,7 +23,7 @@ except Exception:
 active_tasks = []          # قائمة روابط المهام المتاحة للترويج
 user_pending_tasks = {}    # لتتبع الخطوة الحالية للمستخدم
 admin_waiting_rejection = {} # لتتبع المدير عند كتابة سبب الرفض
-user_clicked_ad = set()    # لتتبع فتح الإعلانات
+user_ad_clicks = {}        # لتسجيل وقت ضغط المستخدم على رابط الإعلان
 
 # إعداد قاعدة البيانات وتحديث الجداول تلقائياً
 def init_db():
@@ -64,14 +64,13 @@ def get_or_create_user(user_id, username, first_name, referrer_id=None):
     user = cursor.fetchone()
     
     if not user:
-        # المستخدم غير موجود سابقاً (اشتراك جديد حقيقي)
         cursor.execute('''
             INSERT INTO users (user_id, username, first_name, balance, last_daily_gift, invited_by)
             VALUES (?, ?, ?, 20.0, NULL, ?)
         ''', (user_id, username, first_name, referrer_id))
         conn.commit()
         
-        # إضافة مكافأة الإحالة (5 نقاط) للشخص الداعي فقط عند الاشتراك الجديد الحقيقي
+        # مكافأة الإحالة (5 نقاط) للشخص الداعي عند الاشتراك الجديد الحقيقي
         if referrer_id and referrer_id != user_id:
             cursor.execute('SELECT balance FROM users WHERE user_id = ?', (referrer_id,))
             ref_user = cursor.fetchone()
@@ -233,70 +232,85 @@ def handle_buttons(message):
         )
         bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
 
-# 📺 نظام مشاهدة الإعلان المشروط بالفتح الفعلي
+# 📺 نظام إرسال الإعلان مع التحقق من مرور 15 ثانية
 @bot.message_handler(func=lambda message: message.text == "📺 شاهد الإعلان واكسب نقاط")
 def handle_ad_button(message):
     chat_id = message.chat.id
     ad_url = "https://uplcm.com/4/11967886"
     
-    if chat_id in user_clicked_ad:
-        user_clicked_ad.remove(chat_id)
-        
     markup = types.InlineKeyboardMarkup()
-    btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url, callback_data="ad_opened")
-    btn_claim = types.InlineKeyboardButton("✅ تحقق واستلام (1 نقطة)", callback_data="claim_ad_point")
+    # زر لفتح رابط الإعلان (تسجيل وقت الضغط)
+    btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url, callback_data="clicked_ad_link")
+    # زر استلام النقطة بعد انتهاء الـ 15 ثانية
+    btn_claim = types.InlineKeyboardButton("✅ تأكيد المشاهدة (1 نقطة)", callback_data="claim_ad_15s")
+    
     markup.add(btn_link)
     markup.add(btn_claim)
     
     bot.send_message(
         chat_id,
-        "📺 **خطوات كسب النقطة:**\n\n"
-        "1. اضغط على زر **'اضغط هنا لمشاهدة الإعلان'** وقم بفتحه أولاً.\n"
-        "2. بعد فتح الإعلان، ارجع واضغط على **'تحقق واستلام'** للحصول على النقطة!",
+        "📺 **خطوات كسب النقطة الحقيقية:**\n\n"
+        "1. اضغط على رابط الإعلان وشاهده.\n"
+        "2. انتظر لمدة **15 ثانية** على الأقل.\n"
+        "3. اضغط على زر **'تأكيد المشاهدة'** لتحصيل النقطة!",
         reply_markup=markup,
         parse_mode="Markdown"
     )
 
-@bot.callback_query_handler(func=lambda call: call.data == "ad_opened")
-def track_ad_click(call):
+# تسجيل وقت ضغط المستخدم على زر رابط الإعلان
+@bot.callback_query_handler(func=lambda call: call.data == "clicked_ad_link")
+def track_ad_click_time(call):
     chat_id = call.message.chat.id
-    user_clicked_ad.add(chat_id)
-    bot.answer_callback_query(call.id, "✅ تم تسجيل فتح الإعلان! ارجع واضغط على زر التحقق والاستلام الآن.")
+    user_ad_clicks[chat_id] = datetime.now()
+    bot.answer_callback_query(call.id, "⏱️ تم بدء احتساب الـ 15 ثانية للمشاهدة...")
 
-@bot.callback_query_handler(func=lambda call: call.data == "claim_ad_point")
-def claim_ad_point_callback(call):
+# التحقق من مرور 15 ثانية عند محاولة استلام النقطة
+@bot.callback_query_handler(func=lambda call: call.data == "claim_ad_15s")
+def claim_ad_15s_callback(call):
     user_id = call.from_user.id
     chat_id = call.message.chat.id
     
-    # حظر الكسب إذا لم يتم فتح الإعلان
-    if chat_id not in user_clicked_ad:
+    # التحقق هل قام بضغط الرابط مسبقاً أم لا
+    if chat_id not in user_ad_clicks:
         bot.answer_callback_query(
             call.id, 
-            "⚠️ لم تقم بفتح الإعلان بعد! يرجى الضغط على رابط الإعلان أولاً لتكسب النقاط.", 
+            "⚠️ يجب عليك الضغط على رابط الإعلان ومشاهدته أولاً!", 
+            show_alert=True
+        )
+        return
+        
+    # حساب الفارق الزمني (15 ثانية)
+    elapsed_time = (datetime.now() - user_ad_clicks[chat_id]).total_seconds()
+    
+    if elapsed_time < 15:
+        remaining = int(15 - elapsed_time)
+        bot.answer_callback_query(
+            call.id, 
+            f"⏳ لم تنتهِ الـ 15 ثانية بعد! متبقي: {remaining} ثانية.", 
             show_alert=True
         )
         return
 
-    reward_amount = 1.0
-    update_user_balance(user_id, reward_amount)
-    user_clicked_ad.remove(chat_id)
+    # إذا تم اجتياز الـ 15 ثانية بنجاح
+    update_user_balance(user_id, 1.0)
+    del user_ad_clicks[chat_id] # مسح السجل لتجنب إعادة الاستخدام
     
     new_balance, _ = get_or_create_user(user_id, call.from_user.username, call.from_user.first_name)
     bot.answer_callback_query(call.id, "🎉 تمت إضافة 1 نقطة لرصيدك بنجاح!", show_alert=True)
     
-    # إرسال إعلان آخر مباشرة بعد النجاح
+    # إرسال إعلان جديد مباشرة
     ad_url = "https://uplcm.com/4/11967886"
     markup = types.InlineKeyboardMarkup()
-    btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان التالي", url=ad_url, callback_data="ad_opened")
-    btn_claim = types.InlineKeyboardButton("✅ تحقق واستلام (1 نقطة)", callback_data="claim_ad_point")
+    btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان التالي", url=ad_url, callback_data="clicked_ad_link")
+    btn_claim = types.InlineKeyboardButton("✅ تأكيد المشاهدة (1 نقطة)", callback_data="claim_ad_15s")
     markup.add(btn_link)
     markup.add(btn_claim)
     
     bot.send_message(
         chat_id,
-        f"🎉 **تمت إضافة (`+1.0 نقطة`) لرصيدك بنجاح!**\n\n"
+        f"✅ **تمت إضافة (`+1.0 نقطة`) لرصيدك بنجاح!**\n\n"
         f"📊 رصيدك الحالي: **{new_balance} نقطة**\n\n"
-        f"📺 **شاهد إعلاناً آخر واضغط على رابط الإعلان لتكسب مجدداً:**",
+        f"📺 **شاهد إعلاناً آخر (15 ثانية) واكسب مجدداً:**",
         reply_markup=markup,
         parse_mode="Markdown"
     )
@@ -488,17 +502,4 @@ def handle_admin_rejection_reason(message):
     caption = data['caption']
     
     try:
-        bot.edit_message_caption(
-            caption=caption + f"\n\n❌ **الحالة:** تم الرفض.\n💬 **السبب:** {rejection_reason}",
-            chat_id=admin_id,
-            message_id=message_id,
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        print(f"Error editing admin caption: {e}")
-        
-    try:
-        bot.send_message(
-            target_user_id,
-            f"❌ **عذراً، تم رفض إثبات التفاعل الخاص بك من قبل الإدارة.**\n\n"
-            f"💬 *
+        bot.edit_message_captio
