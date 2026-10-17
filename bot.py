@@ -230,28 +230,49 @@ def handle_buttons(message):
         )
         bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
 
-# زر مشاهدة الإعلان (تنسيق مشاهدة حقيقية - 1 نقطة لكل مشاهدة)
+# 📺 زر مشاهدة الإعلان مع زر تأكيد الحصول على النقطة
 @bot.message_handler(func=lambda message: message.text == "📺 شاهد الإعلان واكسب نقاط")
 def handle_ad_button(message):
     chat_id = message.chat.id
-    user = message.from_user
-    
-    # إضافة 1 نقطة للمستخدم مقابل المشاهدة الحقيقية
-    reward_amount = 1.0
-    update_user_balance(user.id, reward_amount)
-    
-    new_balance, _ = get_or_create_user(user.id, user.username, user.first_name)
     ad_url = "https://uplcm.com/4/11967886"
     
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان (1 نقطة)", url=ad_url))
+    btn_link = types.InlineKeyboardButton("🔗 اضغط هنا لمشاهدة الإعلان", url=ad_url)
+    btn_claim = types.InlineKeyboardButton("✅ تم المشاهدة (استلام 1 نقطة)", callback_data="claim_ad_reward")
+    markup.add(btn_link)
+    markup.add(btn_claim)
     
     bot.send_message(
         chat_id,
-        f"📺 **تمت إضافة (`+1.0 نقطة`) لحسابك مقابل المشاهدة!**\n\n"
-        f"📊 رصيدك الجديد: **{new_balance} نقطة**\n\n"
-        f"اضغط على الزر أدناه لإتمام المشاهدة:",
+        "📺 **مشاهدة الإعلانات:**\n\n"
+        "1. اضغط على الزر أدناه لمشاهدة الإعلان.\n"
+        "2. بعد الانتهاء من المشاهدة، اضغط على زر **'تم المشاهدة'** لإضافة **1 نقطة** لرصيدك مباشرة!",
         reply_markup=markup,
+        parse_mode="Markdown"
+    )
+
+# معالجة ضغط زر تأكيد المشاهدة وإرسال التنبيه
+@bot.callback_query_handler(func=lambda call: call.data == "claim_ad_reward")
+def claim_ad_reward_callback(call):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+    
+    # إضافة 1 نقطة لرصيد المستخدم
+    reward_amount = 1.0
+    update_user_balance(user_id, reward_amount)
+    
+    # جلب الرصيد الجديد
+    new_balance, _ = get_or_create_user(user_id, call.from_user.username, call.from_user.first_name)
+    
+    bot.answer_callback_query(call.id, "🎉 تمت إضافة 1 نقطة لرصيدك بنجاح!", show_alert=True)
+    
+    # إرسال رسالة تشجيعية لمشاهدة إعلان آخر
+    bot.send_message(
+        chat_id,
+        f"✅ **تمت إضافة (`+1.0 نقطة`) لرصيدك بنجاح!** 🎉\n\n"
+        f"📊 رصيدك الحالي: **{new_balance} نقطة**\n\n"
+        f"📺 **شاهد إعلاناً آخر لكسب المزيد من النقاط!**",
+        reply_markup=get_main_menu(),
         parse_mode="Markdown"
     )
 
@@ -469,3 +490,4 @@ def handle_admin_rejection_reason(message):
 if __name__ == "__main__":
     print("Bot is running...")
     bot.infinity_polling()
+                            
