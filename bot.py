@@ -5,7 +5,7 @@ import telebot
 from telebot import types
 
 # توكن البوت الخاص بك
-TELEGRAM_BOT_TOKEN = '8728570816:AAH39_bLXWcxYca-T97zIB3fBsfrEIph6OA'
+TELEGRAM_BOT_TOKEN = '8728570816:AAGqKs4jnnLA8MZa0HXGlLqjKC2DBbeDfwA'
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 # 🔴 معرف الـ Chat ID الخاص بك للإدارة وتلقي الإثباتات
@@ -505,4 +505,5 @@ def handle_admin_rejection_reason(message):
 
 if __name__ == "__main__":
     print("Bot is running safely on Railway...")
-    bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeou
+    bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeout=60)
+    
