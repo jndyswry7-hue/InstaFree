@@ -146,7 +146,6 @@ def send_welcome(message):
             pass
             
     balance, _ = get_or_create_user(user.id, user.username, user.first_name, referrer_id)
-    bot_username = bot.get_me().username
     
     welcome_text = (
         f"أهلاً بك يا *{user.first_name}* في منصة الترويج لإنستجرام! 🌟🔥\n\n"
@@ -236,6 +235,7 @@ def handle_buttons(message):
         )
         bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
 
+# دالة إرسال الإعلان مع تسجيل وقت البداية
 def send_ad_prompt(chat_id):
     ad_url = "https://uplcm.com/4/11967886"
     user_ad_clicks[chat_id] = datetime.now()
@@ -266,20 +266,24 @@ def confirm_ad_watch_callback(call):
     chat_id = call.message.chat.id
     
     if chat_id not in user_ad_clicks:
+        bot.answer_callback_query(call.id, "⚠️ يرجى الضغط على زر مشاهدة الإعلان أولاً!", show_alert=True)
         send_ad_prompt(chat_id)
         return
         
     elapsed_time = (datetime.now() - user_ad_clicks[chat_id]).total_seconds()
     
+    # إذا لم تمر الـ 15 ثانية، يتم الرفض، إرسال رسالة التنبيه، وإعادة إرسال الإعلان ليبدأ العد من الأول
     if elapsed_time < 15:
-        user_ad_clicks[chat_id] = datetime.now()
         bot.answer_callback_query(
             call.id, 
             "عذراً، يجب مشاهدة الإعلان لمدة 15 ثانية كاملة! ⏱️", 
             show_alert=True
         )
+        bot.send_message(chat_id, "⚠️ لم تكتمل مدة الـ 15 ثانية للمشاهدة. يرجى مشاهدة الإعلان مجدداً:")
+        send_ad_prompt(chat_id)
         return
 
+    # إذا اكتمل الوقت بنجاح
     update_user_balance(user_id, 1.0)
     del user_ad_clicks[chat_id]
     
@@ -479,7 +483,6 @@ def handle_admin_rejection_reason(message):
         bot.edit_message_caption(
             caption=caption + f"\n\n❌ **الحالة:** تم الرفض.\n💬 **السبب:** {rejection_reason}",
             chat_id=admin_id,
-            message_id=message_id,
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -502,5 +505,4 @@ def handle_admin_rejection_reason(message):
 
 if __name__ == "__main__":
     print("Bot is running safely on Railway...")
-    bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeout=60)
-            
+    bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeou
