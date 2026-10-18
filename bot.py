@@ -5,7 +5,7 @@ import telebot
 from telebot import types
 
 # توكن البوت الخاص بك
-TELEGRAM_BOT_TOKEN = '8728570816:AAEiOUhAFHfD6AHXvbH2r8pyIdmopilwuWE'
+TELEGRAM_BOT_TOKEN = '8728570816:AAH39_bLXWcxYca-T97zIB3fBsfrEIph6OA'
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 # 🔴 معرف الـ Chat ID الخاص بك للإدارة وتلقي الإثباتات
